@@ -210,14 +210,6 @@ const drawCubemap = (ctx: AppContext, cubemap: Cubemap) => {
     gl.drawElements(gl.TRIANGLES, cubemap.iboSize, gl.UNSIGNED_INT, 0);
 }
 
-
-
-
-
-
-
-
-
 const drawShapes = (ctx: AppContext) => {    
     const gl = ctx.gl;
     const program = ctx.program;
@@ -411,10 +403,7 @@ export const createPool = (gl: WebGL2RenderingContext, x: number = 4, y: number 
         createCuboid(gl,new Vector3(3.85,2,1), new Vector3(4.2,0.05,0.05), new Vector3(153, 102, 51), 18),
 
         // Boden
-        createCuboid(gl,new Vector3(-8,0,-9), new Vector3(20,-0.2,20), new Vector3(1, 1, 1), 0),
-
-        // Zimmer
-        
+        //createCuboid(gl,new Vector3(-8,0,-9), new Vector3(20,-0.2,20), new Vector3(1, 1, 1), 0),
     ]
     return basicShapes;
 };
@@ -441,42 +430,42 @@ export const createBall = (
     const m = res;
     const n = res;
 
-    let vertices = [];
-    let indices = [];
+   const vertices = [];
+const indices = [];
 
-    let t = 0.0;
-    for (let i = 0; i <= n; i++) {
-        const ct = Math.cos(t);
-        const st = Math.sin(t);
+const PI = Math.PI;
 
-        let s = 0.0;
-        for (let j = 0; j < m; j++) {
-            const cs = Math.cos(s);
-            const ss = Math.sin(s);
-            const x = st * cs;
-            const y = st * ss;
-            const z = ct;
-            vertices.push(r * x + pos.x, r * y + pos.y, r * z + pos.z);
-            vertices.push(color.x,color.y,color.z);
-            vertices.push(x + pos.x, y + pos.y, z + pos.z);
-            vertices.push(j/(m-1), i/n)
-           
+for (let i = 0; i <= n; i++) {
+    const v = i / n;
+    const phi = PI * v;
+    const sinPhi = Math.sin(phi);
+    
+    for (let j = 0; j <= m; j++) {
+        const u = j / m;
+        const theta = 2 * PI * u;
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+        
+        const x = r * sinPhi * cosTheta + pos.x;
+        const y = r * sinPhi * sinTheta + pos.y;
+        const z = r * Math.cos(phi) + pos.z;
 
-            s += 2 * Math.PI / m;
-        }
-        t += Math.PI / n;
+        vertices.push(x, y, z); // Position
+        vertices.push(color.x, color.y, color.z); // Farbe
+        vertices.push(sinPhi * cosTheta, sinPhi * sinTheta, cosTheta); // Normal
+        vertices.push(u, -v); // Textur
     }
+}
 
-    let k = 0;
-    for (let i = 0; i < n; i++) {
-        for (let j = 0; j < m; j++) {
-            indices.push(k + j);
-            indices.push(k + j + m);
-        }
-        indices.push(k + 0);
-        indices.push(k + m);
-        k += m;
+for (let i = 0; i < n; i++) {
+    for (let j = 0; j < m; j++) {
+        const p1 = i * (m + 1) + j;
+        const p2 = p1 + m + 1;
+        
+        indices.push(p1, p2, p1 + 1, p1 + 1, p2, p2 + 1);
     }
+}
+    
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     const vertexNormalBuffer = gl.createBuffer();
@@ -600,32 +589,133 @@ const App = () => {
 
     const drawScene = () => {
 
+        // if (!context.current) return;
+        // const ctx = context.current;
+        // const gl = ctx.gl;
+        // const modelView = ctx.modelView;
+        // const zoom = ctx.zoom;
+        // const viewMode = ctx.viewMode;
+        // const qNow = ctx.orientation;
+
+        // let aspect = gl.canvas.width / gl.canvas.height;
+        // let camX = 0;
+        // let camY = 0;
+        // let camZ = 10;
+
+        // ctx.projection = new Matrix4().perspective({
+        //     fovy: Math.PI / 2,
+        //     aspect: aspect,
+        //     near: 0.01,
+        //     far: 300
+        // })  
+        // modelView.identity();
+        // modelView.fromQuaternion(qNow);
+        // modelView.translate([-5, -3, -1])
+        
+        // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        // drawShapes(ctx);
+        // drawCubemap(ctx, ctx.cubemaps[ctx.currentCubemap]);
         if (!context.current) return;
         const ctx = context.current;
         const gl = ctx.gl;
+        const program = ctx.program;
         const modelView = ctx.modelView;
         const zoom = ctx.zoom;
         const viewMode = ctx.viewMode;
         const qNow = ctx.orientation;
 
+        let mynear = 2;
+        let myfar = 1000;
         let aspect = gl.canvas.width / gl.canvas.height;
-        let camX = 0;
-        let camY = 0;
-        let camZ = 10;
+        let displayHeight = 40;
+        let displayWidth = aspect * displayHeight;
+        let camX = 1;
+        let camY = 9;
+        let camZ = 50;
+        let left = mynear * (-displayWidth / 2 - camX) / camZ;
+        let right = mynear * (displayWidth / 2 - camX) / camZ;
+        let bottom = mynear * (-displayHeight / 2 - camY) / camZ;
+        let top = mynear * (displayHeight / 2 - camY) / camZ;
 
-        ctx.projection = new Matrix4().perspective({
-            fovy: Math.PI / 2,
-            aspect: aspect,
-            near: 0.01,
-            far: 300
-        })  
+        ctx.projection.identity();
+        if (viewMode == ViewMode.Orthographic) {
+            ctx.projection = new Matrix4().ortho(
+                {
+                    left: -displayWidth / 2, right: displayWidth / 2,
+                    bottom: -displayHeight / 2, top: displayHeight / 2,
+                    near: mynear, far: myfar
+                });
+        }
+
+        if (viewMode == ViewMode.Perspective) {
+            ctx.projection = new Matrix4().frustum(
+                {
+                    'left': left, 'right': right,
+                    'bottom': bottom, 'top': top,
+                    'near': mynear, 'far': myfar
+                });
+        }
+        
+        ctx.projection.translate([-camX, -camY, -camZ]);
+
+        camX = -3;
+        left = mynear * (-displayWidth / 2 - camX) / camZ;
+        right = mynear * (displayWidth / 2 - camX) / camZ;
+        bottom = mynear * (-displayHeight / 2 - camY) / camZ;
+        top = mynear * (displayHeight / 2 - camY) / camZ;
+
+        let PLeft = new Matrix4();
+        PLeft.frustum({
+            'left': left, 'right': right,
+            'bottom': bottom, 'top': top,
+            'near': mynear, 'far': myfar
+        });
+        PLeft.translate([-camX, -camY, -camZ]);
+
+        camX = 3;
+        left = mynear * (-displayWidth / 2 - camX) / camZ;
+        right = mynear * (displayWidth / 2 - camX) / camZ;
+        bottom = mynear * (-displayHeight / 2 - camY) / camZ;
+        top = mynear * (displayHeight / 2 - camY) / camZ;
+
+        let PRight = new Matrix4();
+        PRight.frustum({
+            'left': left, 'right': right,
+            'bottom': bottom, 'top': top,
+            'near': mynear, 'far': myfar
+        });
+        PRight.translate([-camX, -camY, -camZ]);
+
         modelView.identity();
         modelView.fromQuaternion(qNow);
-        modelView.translate([-5, -3, -1])
-        
+
+        modelView.translate([-10,-5,0])
+        modelView.scale([zoom, zoom, zoom]);
+        modelView.scale([15, 15, 15]);
+
+        let colorLoc = gl.getUniformLocation(program, 'uColor');
+        gl.uniform3fv(colorLoc, [1, 1, 1]);
+
+        gl.colorMask(true, true, true, true);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        drawShapes(ctx);
+        if (viewMode == ViewMode.Stereo) {
+            gl.colorMask(true, false, false, true);
+            ctx.projection = PLeft;
+            drawShapes(ctx);
+
+            gl.clear(gl.DEPTH_BUFFER_BIT);
+
+            gl.colorMask(false, true, true, true);
+            ctx.projection = PRight;
+            drawShapes(ctx);
+        }else{
+           // drawShapes(ctx);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            drawShapes(ctx);
+            drawCubemap(ctx, ctx.cubemaps[ctx.currentCubemap]);
+        }
         drawCubemap(ctx, ctx.cubemaps[ctx.currentCubemap]);
+
     }
 
     const createTexture = async (gl: WebGLRenderingContext, image: string) => {
@@ -737,6 +827,31 @@ const App = () => {
     return (
         <div className='relative bg-black h-[inherit] w-full'>
             <canvas ref={canvas} className='w-full h-[inherit]'></canvas>
+
+            <UIPanel>
+                <UILabel title="View Mode">
+                    <MultiSwitch
+                        onChange={(value) => {
+                            context.current.viewMode = value;
+                            drawScene();
+                            renderUI();
+                        }}
+                    >
+                        <MultiSwitchElement
+                            label="Stereo"
+                            value={ViewMode.Stereo}
+                        />
+                        <MultiSwitchElement
+                            label="Orthographic"
+                            value={ViewMode.Orthographic}
+                        />
+                        <MultiSwitchElement
+                            label="Perspective"
+                            value={ViewMode.Perspective}
+                        />
+                    </MultiSwitch>
+                </UILabel>
+            </UIPanel>
         </div>
     )
 }
